@@ -1,0 +1,13 @@
+T
+> (define viocalls (loadmodule "viocalls"))
+1360
+> (define viowrttty (getprocaddr viocalls "VIOWRTTTY"))
+15142831
+> (define hello "Hello world\n")
+"Hello world\n"
+> (call viowrttty msg (word (length msg)) (word 0))
+error: unbound variable - MSG
+if continued: try evaluating symbol again
+1> (call viowrttty hello (word (length hello)) (word 0))
+0
+1> (exit)

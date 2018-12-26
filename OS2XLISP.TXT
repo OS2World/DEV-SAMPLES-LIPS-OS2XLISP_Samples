@@ -1,0 +1,1349 @@
+
+
+
+
+
+
+
+
+     OS2XLISP:  OS/2 Extensions to XLISP, an Object-Oriented LISP
+
+                                   
+            XLISP version 2, OS/2 extensions version 1.10
+
+                 
+                             June 1, 1988
+
+
+
+                    OS/2 protected-mode extensions
+                           and documenation
+                                  by
+                           Andrew Schulman
+                          32 Andrews St. #2
+                          Cambridge MA 02139
+
+                        (617) 876-2102 (home)
+
+
+
+                                XLISP
+                                  by
+                          David Michael Betz
+
+
+
+
+
+INTRODUCTION
+
+    The goal of OS2XLISP is to give users an opportunity to
+experiment with protected-mode/virtal-memory/multitasking
+programming, without investing in expensive development kits and
+compilers.  OS2XLISP is also a demonstration of the power of
+run-time dynamic linking.
+
+    OS/2 is the new protected-mode operating system for 286 and 386
+machines, developed by Microsoft and IBM.
+
+    OS2XLISP is an interpreter with access to all OS/2 system
+routines.  Even those programmers who already have the Microsoft
+software development kit should find OS2XLISP useful for interactive
+experimentation (no compiles!), small- to medium-size programs,
+incremental testing, and quick prototyping.
+
+    Among the special features of OS2XLISP are:
+
+    o   Access to OS/2 services, through the magic of run-time
+        dynamic-linking with the functions (loadmodule), (getprocaddr),
+        (call), and (c-call).
+
+    o   A protected programming environment -- it is nearly impossible
+        to crash OS2XLISP with a GP fault, even when the user .....
+
+    o   Virtual memory -- you can create a huge number of nodes, occupying
+        more than the available physical memory on your machine.
+
+    o   High-level access to 286 protected-mode instructions
+        with (lar), (lsl), (verr), and (verw).
+
+
+    OS2XLISP can of course be used as "straight" XLISP.  The user
+can refer to "XLISP: An Object-Oriented Lisp, Version 2.0" (David
+M. Betz, 6 February 1988), and the article "An XLISP Tutorial" (BYTE,
+March 1985).  The book "The XLISP Primer" by Bonnie Fladung
+(Prentice-Hall, 1987) is also useful, though somewhat out of date.
+
+    To fully tap OS/2 and 286 protected-mode resources using
+OS2XLISP, you do NOT need the Microsoft software development kit or
+the Microsoft C compiler, but you will need to invest in at least one
+book on OS/2: I recommend Ed Iacobucci's "OS/2 Programmer's Guide"
+(McGraw-Hill, 1988).
+
+    Equipped solely only with Iacobucci's book, a file of Charles
+Petzold's OS/2 articles from PC MAGAZINE, and OS2XLISP, one can do a
+reasonable amount of OS/2 programming and experimentation.  Other
+useful resources are listed in the annotated bibliography.  A few
+"un-resources" are listed there as well.
+
+
+
+GETTING STARTED
+
+    To run OS2XLISP, you will of course need OS/2.  If OS2XLISP is invoked
+under MS-DOS, it will inform you of this fact and exit.
+
+    To take advantage of virtual memory, the MEMMAN switch in your
+OS/2 CONFIG.SYS file must be set to SWAP,MOVE, and you must set up a
+SWAPPATH.  I mention this because if, like many OS/2 users, you are
+booting off a floppy, then the default is NOSWAP.  OS/2's default
+SWAPPATH is the boot-drive, and you sure don't want a floppy disk as
+your swap area!  You will need something like this in CONFIG.SYS:
+
+        memman=swap,move
+        swappath=d:\swap
+
+(swappath is the name of an already existing subdirectory).
+
+    This documentation should be accompanied by:
+        
+        OS2XLISP.EXE -- executable
+        OS2XLCRT.EXE -- executable requiring CRTLIB.DLL
+        INIT.LSP     -- initialization file
+        XLISP.DOC    -- standard documentation for XLISP
+        *.LSP        -- sample programs
+        \SOURCE      -- subdirectory of XLISP source code in C
+
+    OS2XLISP comes with a number of sample programs, all with the
+.LSP file extension.  A .LSP file can be run by including its name
+on the OS/2 command-line.  For example, to run the WELCOME.LSP 
+program:
+
+        D:\OS2\XLISP>os2xlisp welcome
+
+    Once inside OS2XLISP, program files can be run using the (load)
+function.  For example:
+
+        > (load "welcome.lsp")
+
+or:
+
+        > (load 'welcome)
+
+    To see a listing of .LSP files, you can use:
+
+        > (system "dir d:\\os2\\xlisp\\*.lsp")
+
+(Note that, because the backslash has special significance in XLISP,
+if you really want to input a backslash to OS2XLISP, you need to
+enter two of them.)
+
+    Another way to see a directory listing is by invoking the (directory)
+function in the file DIR.LSP.  This function has been implemented using
+OS2XLISP's (call) function, and you may want to examine this file to see
+one example of calling OS/2 services from OS2XLISP.  To see a listing of
+.LSP files:
+
+        > (load 'dir)
+        T
+        > (directory 'lsp)
+        ("WELCOME.LSP" "TAK.LSP" "STEP.LSP" "SEGS.LSP" "PP.LSP" "OVERCOM.LSP"
+        "OBJ.LSP" "INIT.LSP" "ENV.LSP" "ENUMDLL.LSP" "DIR.LSP")
+
+    To exit XLISP:
+
+        > (exit)
+
+
+
+GENERAL NOTES
+
+    While this is not meant as a tutorial on XLISP, a few explanations
+are in order, mostly to help you read the code fragments provided
+later in this documentation.
+
+    After typing "OS2XLISP" at the OS2 prompt, OS2XLISP will start up
+and load the file INIT.LSP.  You will then be presented with the
+following user-disinterested interface:
+        
+        >
+
+(Actually, this prompt can be changed by setting the value of the
+global variable *prompt*.  If *prompt* is set to a string, then OS2XLISP
+will use that string for the prompt; if *prompt* is set to a piece of code,
+then OS2XLISP will execute that code each time through its main loop.
+See the commented-out example at the bottom of the file INIT.LSP.  Note
+how the same variable can be used to "hold" a string or a piece of code --
+Lisp is pretty amazing, if you ask me.  End of digression.)
+
+    OS2XLISP is waiting for an expression, which it will evaluate; it will
+then print the results of the evaluation.  
+
+        > (define x (+ 444 222))
+        666
+
+    You might guess that this is equivalent to the operation
+
+        X := 444 + 222
+
+    in other languages: set the variable X equal to the sum of 222
+and 444.
+
+    Actually, in the above example, we not only set x equal to 666;
+666 was also returned as the value of the expression (and XLISP printed
+out this return value).  We could have used the entire expression
+inside another one, if we wanted, in the same way that C assignment
+statements return a value that can be used inside other statements:
+
+        > (define y (define x 666))
+        666
+
+    To query the value of x, or any variable, just type its name:
+        
+        > x                     ; you type
+        666                     ; XLISP replies
+            
+    XLISP always prints a reply.  Note above that, as in assembly
+language, Lisp comments begin with the semicolon and go to the end of
+the line.
+
+    You could also create a function that adds 222 to its input:
+
+        > (define (add222 x)
+            (+ x 222))
+        ADD222
+            
+    Again, XLISP always prints a reply, in this case the name of the
+function we just created.  This function can be used just like those
+that come built-in with XLISP.  To use the function:
+
+        > (add222 5)
+        227
+        > (define zero (add222 -222))
+        0
+            
+    Note that (define) was used, both to create variables, and to
+create functions.  Actually, (define) is just a macro defined in the
+file INIT.LSP, and conforms more to the Scheme dialect of the LISP
+programming language than it does to Common LISP.  You can instead
+use the more common (setq) for variables, and (defun) for
+functions. 
+
+    The file INIT.LSP has no special status, and is simply a file of
+XLISP expressions.
+
+    Anything done interactively/incrementally at the prompt can also
+be put into a program file.
+
+    If you created a file OS2STUFF.LSP, you could have XLISP run
+the file by typing the expression
+
+        > (load "os2stuff.lsp")
+            
+or
+
+        > (load 'os2stuff)
+            
+    The second example also shows that when you are interested in the
+NAME of an XLISP symbol, rather than in its value, preface it with an
+apostrophe.  (This is a gross oversimplification.)
+
+    XLISP will also run any filenames you include on the OS/2 command
+line, after running INIT.LSP:
+
+        D:\OS2\XLISP>os2xlisp os2stuff
+            
+    XLISP, and XLISP program files, can send output to another
+file by using the (dribble) function.  Here is an example of a completely
+non-interactivate program, which sends 100 random 2-digit hexadecimal
+numbers to a file called "rand.lsp":
+
+        ; rand.lsp
+        (dribble 'rand.log)                 ; open up log file
+        (define *integer-format* "%02X")    ; print integers in hex
+        (dotimes                        
+            (i #xff)                        ; for (i=0, i<0xFF, i++)
+            (print (random #xff)))          ;   printf("%02X\n", random(0xFF))
+        (dribble)                           ; close log file
+        (exit)                              ; exit back to OS/2
+
+        ; at the OS/2 prompt
+        D:\OS2\XLISP>os2xlisp rand
+            
+    This silly example shows a number of other things as well:
+        
+    The format in which integers are displayed can be changed by
+re-defining the global variable *integer-format* (global variables
+are by convention designated with asterisks on either end).
+Actually, *integer-format* is a C printf() mask: you can even use
+"%Fp" to display pointers in segment:offset format.  The diplay of
+floating-point numbers can similarly be changed by re-defining
+*float-format*, and the display of two-byte numbers and character codes 
+can be changed by re-defining *word-format*.
+
+    Similarly, numbers can be input in bases other than 10.  #x is
+used to input hexadecimal, and #b to input binary.  Most of this is
+explained in the standard XLISP documentation (the file XLISP.DOC).
+
+    One way to form loops is with (dotimes).  In the above example,
+we begin to see why "all those parentheses" are nice: expressions can
+be arbitrarily nested.
+
+    This example also shows how to get out of XLISP: the (exit)
+function can be used either at the prompt, or from within a program
+file.
+
+    Hitting Ctrl-Break or Ctrl-C will NOT exit you back to the
+operating system.  In fact, either Ctrl-C or Ctrl-Break will stop the
+currently-running program in its tracks, and place you at a debug
+prompt.  You can determine the value of variables, change them, and
+so on. The (baktrace) function can be invoked as well:
+
+            ;;;; ... in the middle of printing random hexadecimal numbers
+        72
+        20
+        46
+            ;;;; ... hit Ctrl-C here
+        break: BREAK
+        if continued: return from BREAK
+            ;;;; ... wanted to see current value of i
+        1> i
+        19
+        1> (baktrace)
+        Function: #<Subr-BAKTRACE: #22f6a42>
+        Function: #<Subr-PRINT: #22f651a>
+        Arguments:
+            46
+        Function: #<FSubr-DOTIMES: #22f6bd2>
+        Arguments:
+          (I FF)
+          (PRINT (RANDOM FF))
+        Function: #<Subr-LOAD: #22f6312>
+        Arguments:
+          RAND
+        NIL
+            ;;;; tell XLISP we want to resume the program
+        1> (continue)
+        D0
+        D3
+        ....
+
+    The 1 displayed in the debug prompt is the current break level.  To
+return to a previous break level, hit Ctrl-Z.
+
+    [[[ documentation not finished:  should note some of the issues involved
+in break-ins in an OS/2 interpreter.  For instance, what if code for
+DOSPOPUP has been executed, but user hits Ctrl-C before DOSENDPOPUP can
+be executed, and then throws away program rather than typing (continue)?
+We would still be in pop-up!  Not able to switch away to another screen
+group, until we invoke (call DOSENDPOPUP (word 0)). ]]]
+
+                        *   *   *
+
+    The following sections describe OS/2-specific features:  how to call
+dynamic-link functions and protected-mode instructions.  Many semi-useful
+code fragments are provided.
+
+    The examples in the reference below build on each other.  The
+example for one function may use a variable created in an earlier
+example.  Keep this in mind if you jump into the middle.
+
+    Finally, even though the access to the operating system services
+that OS2XLISP provides is at a low level, the examples below show how
+to construct high-level access. 
+
+  
+
+KNOWN BUGS AND LIMITATIONS
+
+    
+    The functions to (save) and (restore) a workspace are not
+implemented in this version of OS2XLISP.  In the meantime, XLISP
+program files can be loaded with the (load) function, and individual
+functions can be saved with (savefun).
+
+    OS2XLISP editing facilities are extremely primitive.  However,
+development goes very quickly if you run a text editor in a separate
+session, and use Alt-Esc to toggle back and forth between your editor
+and OS2XLISP.  An excellent EMACS editor, available for OS/2
+protected mode, is Epsilon from Lugaru Software. 
+
+    (An alternative solution is provided in the file TOPLEVEL.LSP.  This
+dynamically links to Andrew Estes's excellent CED-link ALIAS package, which
+provides an intelligent replacement to the KBDSTRINGIN function.  While
+TOPLEVEL.LSP is far from perfect, it does let you edit your input line
+with the cursor keys, retrieve past lines, and so on.  It's all done in a
+few lines of Lisp.  Estes's ALIAS is available on the CompuServe Microsoft
+Systems forum (GO MSSYS), in the OS/2 data library -- get it; it will
+greatly improve your quality of life under OS/2.)  
+
+    Like XLISP running under other operating systems, OS2XLISP does
+not transform tail recursion into goto's.  While OS2XLISP has been
+compiled with a large stack, OS2XLISP will fail for heavily-recursive
+work like Ackerman's function.  The (sp) function can be used inside
+recursive functions to detect stack overflow before it occurs (see the
+file ACK.LSP for an example).
+
+    Those OS/2 function calls that require a pointer to object code,
+such as DOSCREATETHREAD, cannot be called from this version of
+OS2XLISP.  This is a major limitation, which will be addressed in
+future versions of OS2XLISP.
+
+    In the future, I hope to turn OS2XLISP into a full-fledged
+Concurrent XLISP, with user-defined concurrent/asynchronous threads,
+using the underlying multitasking and interprocess communication
+resources of OS/2.
+
+    In the meantime, multitasking XLISP programs is limited to
+running multiple copies of OS2XLISP, or running OS2XLISP in the
+background.  When multiple instances of OS2XLISP are present in
+memory at the same time, code is shared while each instance of
+OS2XLISP has its own private data.
+
+    (The following paragraph has nothing to do with bugs or
+limitations, but since we're talking about multitasking...)
+
+    When OS2XLISP is run in the background (with perhaps another copy
+of OS2XLISP in the foreground), your Lisp programs continue to
+execute.  What value is that, you ask, when you there's no output
+unless OS2XLISP is in the foreground?  Not so!  Running the program
+BACH.LSP in the background (type "(load 'bach)" and then switch away
+to another program with Alt-Esc) will provide an audio demonstration
+of OS/2 multitasking.  Running the program WELCOME.LSP in the
+background (start the program and then switch to another screen
+group) will show how OS/2 pop-ups work.
+
+    I (Andrew Schulman) would like to hear of any other problems or
+suggestions regarding OS2XLISP.  Please do not bother David Betz (the
+author of XLISP) with problems occurring in the OS/2 implementation.
+
+
+
+RUN-TIME DYNAMIC LINKING FUNCTIONS
+
+(loadmodule <module name>)  LOAD AN OS/2 DYNAMIC LINK LIBRARY
+    <module name>       ASCII string
+    returns             if successful, handle to dynamic link library
+                        if failure, NIL
+                            
+    example:
+        > (define viocalls (loadmodule "VIOCALLS"))
+        1390                             
+        > (define presentation-manager
+            (loadmodule "WIN"))          ; I haven't got it! (Have you?)
+        NIL
+
+    note:
+        The most commonly-called dynamic link modules -- DOSCALLS,
+        VIOCALLS, KBDCALLS, and MOUCALLS -- have been pre-loaded in
+        the initialization file INIT.LSP:
+
+            (define doscalls (loadmodule "DOSCALLS"))
+            (define viocalls (loadmodule "VIOCALLS"))
+            (define kbdcalls (loadmodule "KBDCALLS"))
+            (define moucalls (loadmodule "MOUCALLS"))
+            (define crtlib (loadmodule "CRTLIB"))       ; from MSC 5.1
+        
+        (loadmodule) is equivalent to the OS/2 function DosLoadModule(),
+        and to the Microsoft Windows function LoadLibrary(). 
+
+        In the event of failure, (os2-error) can be called to get the
+        OS/2 error code.  The most common error code is 2:  the file
+        modname.DLL must exist in the libpath= directory.
+
+            
+
+(getprocaddr <module handle> <func>)   GET ADDRESS OF DYNLINK FUNCTION
+    <module handle>     module handle returned by (loadmodule)
+    <func>              ASCII name, or "ordinal number" of OS/2 function
+    returns             if successful, pointer to dynlink function 
+                        if failure, NIL
+                            
+    examples:
+        > (define *integer-format* "%Fp")       ; display as segment:offset
+        "%Fp"
+        > (define vioscrolldn
+            (getprocaddr viocalls "VIOSCROLLDN"))    ; using ASCII name
+        00E7:1069
+        > (define dosgetinfoseg 
+            (getprocaddr doscalls "DOSGETINFOSEG"))
+        479B:0000
+        > (define dosgetinfoseg 
+            (getprocaddr doscalls 8))         	; using ordinal number
+        479B:0000
+        > (define crtlib.strlen                 ; another naming convention
+            (getprocaddr crtlib "_strlen"))     ; cAsE _sEnSiTiVe!
+        0737:1E60
+        > (define win-initialize
+            (getprocaddr
+                (loadmodule "WIN")
+                "WinInitialize"))               ; still waiting...
+        NIL
+            
+    note:
+        (getprocaddr) is equivalent to the OS/2 function DosGetProcAddr(),
+        and to the Microsoft Windows function GetProcAddress().  It is
+        somewhat similar to the register() function in the Windows version
+        of Microsoft Excel.
+
+        The statement made by David Cortesi in his otherwise superb book,
+        "The Programmer's Essential OS/2 Handbook," that "It is not possible
+        to ask for entry points to system packages like VIOCALLS by entry
+        name; the names are not retained in the loaded module" (p.135) is,
+        fortunately, simply not true of VIOCALLS or KBDCALLS.  The above
+        example shows how we retrieved the address of VIOSCROLLDN by
+        passing OS/2 the ASCII string "VIOSCROLLDN."
+
+<<<No longer relevant!>>>
+        Cortesi's statement is true, however, of the functions in the OS/2
+        "DOSCALLS" module (the OS/2 kernel).  These functions cannot be
+        accessed with their ASCII names ("a silly kind of storage economy,"
+        as Cortesi points out).  For instance:
+            > (register "DOSCALLS" "DOSGETINFOSEG")
+            NIL
+            > (register "DOSCALLS" 8)
+            479B:0000                   ; now it's happy!
+        
+        DOSGETPROCADDR is, itself, one of these slightly-less-accessible
+        functions.  Ordinal numbers for these DOSCALLS functions are supplied
+        in Appendix A.  For example, DOSGETPROCADDR is ordinal number 45.
+        Thus, for those that like this sort of thing, here is how the
+        getprocaddr operation can be defined in terms of itself:
+            (define dosgetprocaddr
+                (getprocaddr doscalls 45))
+
+        In the event of failure, (os2-error) can be called to get the
+        OS/2 error code.  The most common error code is 127:  the function
+        name or number must actually be exported from the module.
+            
+        A function's address need only be retrieved once:  the pointer is
+        valid unless and until its module is freed with (freemodule).
+            
+        Note carefully, in the crtlib.strlen example above, that 
+        (getprocaddr), just like LINK.EXE, is case sensitive!  Functions
+        using the Pascal calling convention have ALL CAPS names, whereas
+        functions using the C calling convention are in lower-case and
+        have a leading _underscore.  
+
+
+                    
+(call <proc addr> [<arg> ...])    CALL A DYNLINK FUNCTION (PASCAL CALLING)
+    <proc addr>         pointer returned by (getprocaddr)
+    <arg> ...           arguments to dynlink function:
+                            word, dword, far pointer
+                        symbol argument is directive for (call) return type:
+                            'short 'word 'long 'fixnum 'ptr 'str 'string
+                            (default is word cast to fixnum)
+    returns             the return value of the function; return type
+                            depends upon function
+                            
+    example:
+        > (define gdt 0)
+        0
+        > (define ldt 0)
+        0
+        > (call
+            (getprocaddr doscalls "DOSGETINFOSEG")
+            (addr gdt) (addr ldt))
+        0
+        ;;;; 0 = success:  gdt and ldt have now been "poked" by OS/2
+        > gdt
+        96
+        > ldt
+        15
+
+        > (define (vio-scroll-dn top left bottom right char attr)
+            (zerop (call
+                vioscrolldn                     ; procaddr
+                (word top) (word left)          ; 2-byte params
+                (word bottom) (word right)      ; 2-byte params
+                (word #xffff)                   ; clear the area
+                (addr (word                     ; 4-byte ptr to 2-byte cell
+                    (+ (* #x100 attr) char)))
+                (word 0))))                     ; 2-byte param (VIO handle)
+        VIO-SCROLL-DN
+        > (define cls ()
+            (vio-scroll-dn 0 0 25 80 32 #xff))
+        CLS
+        > (cls)
+        ;;;; screen is cleared
+        T
+            
+        > (define dosselectdisk (getprocaddr doscalls "DOSSELECTDISK"))
+        46AB:0000
+        > (call dosselectdisk (word 1))         ; try to select drive A:
+        0                                       ; 0 = success
+        > (call dosselectdisk (word 25))        ; try to select drive Y:
+        15                                      ; error code: invalid drive
+            
+    notes:
+        Note that (call) takes a variable number of variable-sized
+        arguments.  In the above examples, the functions
+        DOSGETINFOSEG, VIOSCROLLDN, and DOSSELECTDISK were all invoked
+        through (call), even though the arguments they expect have
+        nothing in common.  The ability for one function to handle all
+        sorts of arguments is one of the areas where Lisp shines.
+        There is a nice match between the flexibility of OS/2 and the
+        flexibility of Lisp.
+            
+        For the purposes of (call), a string parameter is equivalent
+        to the (addr) of the string.
+            
+        (call) is not limited to calling standard OS/2 routines:  anything
+        in a dynamic link library can be called.  This, by the way, is why
+        (call) does not return a simple T/NIL.  While it is true that all
+        the standard OS/2 functions adhere to the convention that 0 means
+        success and that any other number is an error code, this is by no
+        means a requirement forced on dynlink functions, and therefore
+        (call) cannot assume that a positive numeric return value means
+        that the call failed.  (This is a change from previous versions
+        of OS2XLISP.)
+            
+        Likewise, there is no requirement that a routine exported from a
+        DLL return a two-byte quantity.  The optional symbol argument was
+        added to version 1.04 of OS2XLISP so that the user may control
+        what (call) returns.  
+        
+        Run-time dynamic linking means that OS2XLISP users can even
+        call dynlink functions that didn't exist when OS2XLISP was
+        compiled.  For instance:
+        
+            (define PM (loadmodule "WIN"))
+            (define win-initialize (getprocaddr PM "WinInitialize"))
+            (define HAB (call win-initialize 'ptr))  
+
+        I haven't seen Presentation Manager, but there's every reason
+        why the above code fragment should work -- run-time dynamic
+        linking means that system services and add-ons can be invoked
+        without OS2XLISP.EXE having any knowledge of them.  It's all
+        done with ASCII strings, and nothing is hard wired.  This
+        resembles "string invocation" in certain programming languages.
+
+        In fact, Lisp programs can easily interface with user-supplied
+        C or Pascal or assembler functions -- just put your code in a
+        dynamic link library, and (call) the functions from OS2XLISP.
+            
+        One real-life example:  after OS2XLISP had already been compiled,
+        I came across David Cortesi's GLOBENV.DLL facility, and OS2XLISP
+        wass able to call the GEnv routines without a hitch (see the file
+        GLOBENV.LSP). 
+            
+        For further examples of (call), see the sample programs that
+        accompany OS2XLISP.
+            
+        (call) resembles the functions (toolbox), (toolbox-16), and
+        (toolbox-32) in the Macintosh version of XLISP, though using
+        the optional symbol arguments 'word, 'long, etc., means we only
+        need one function for each calling convention.
+            
+
+
+(c-call <proc addr> [<arg> ...])    CALL A CDECL DYNLINK FUNCTION
+    <proc addr>         pointer returned by (getprocaddr)
+    <arg> ...           arguments to CDECL dynlink function:
+                            word, dword, far pointer
+    returns             the return value of the function
+                           
+    note:
+        The (call) function shown above handles dynlink functions that
+        should be called with the "pascal" calling convention (which, by
+        the way, has practically nothing to do with the Pascal programming
+        language).  Even though all the standard OS/2 dynlink routines
+        use the Pascal calling convention, there is no rule which requires
+        DLL writers to use it.  Therefore, the (c-call) function has been
+        provided to invoke functions with the "cdecl" calling convention.
+
+        The latest version of the Microsoft C compiler (5.1) includes a
+        disk showing how the entire C standard library can be placed in
+        a dynamic-link library that can be called from multiple applications
+        or even from multi-thread applications.  The default name for this
+        C DLL is CRTLIB.DLL (CRT means C run-time, not cathode ray tube!).
+            
+        Aside from the promise of tiny EXE files (since the entire C
+        standard library resides outside the EXE), CRTLIB.DLL means that
+        your Lisp programs could call any C function.
+
+	examples:
+		
+		<<< documentation not finished >>>
+		<<< cf. sample files READ.LSP and CRTLIB.LSP >>>
+            
+
+
+(freemodule <module handle>)    RELEASE AN OS/2 DYNAMIC LINK LIBRARY
+    <module handle>     module handle returned by (loadmodule)
+    returns             if successful, T
+                        if failure, NIL
+    example:
+        > (freemodule vio)
+        T                           ; success
+        > (freemodule 666)          ; probably not a real module handle
+        NIL
+        > (os2-error)
+        6                           ; error code = ERROR_INVALID_HANDLE
+            
+    note:
+        (freemodule) is equivalent to the OS/2 function DosFreeModule(),
+        and to the Microsoft Windows function FreeLibrary().
+            
+        Any pointers to functions in a dynamic-link module become invalid
+        when the module is freed.
+                            
+
+
+(os2-error)     GET LATEST OS/2 ERROR CODE
+    returns             latest error code
+
+    example:
+        > (freemodule 666)          ; probably not a real module handle
+        NIL
+        > (os2-error)
+        6                           ; error code = ERROR_INVALID_HANDLE
+
+    note:
+        (os2-error) returns the latest error from (loadmodule),
+        (getprocaddr), and (freemodule).  The number returned
+        is only valid if (os2-error) is called immediately after one
+        of these three functions generates an error.  
+            
+        The error can be further classified by calling DOSERRCLASS.
+
+
+        
+
+POINTER MANIPULATION FUNCTIONS
+
+(addr <node>)   GET ADDRESS OF DATA ASSOCIATED WITH AN XLISP NODE
+    <node>              an XLISP node
+    returns             address of data, depending on (type-of <node>)
+
+    example:
+        > (define x 666)
+        666
+        > (type-of x)
+        FIXNUM
+        > (define *integer-format* "%Fp")   ; display as seg:off far pointer
+        "%Fp"
+        > (addr x)
+        024F:8410                   ; pointer to 4-byte FIXNUM
+        > (peek (addr x) 4)         ; peek at 4-byte area
+        666
+
+        > (define x "Hello world!")
+        "Hello world!"
+        > (type-of x)
+        STRING
+        > (addr x)
+        024F:9448
+        > (peek (addr x) 0)         ; peek at ASCII string
+        "Hello world!"
+
+        > (define *integer-format* "%Fp")
+        "%Fp"
+        > (addr (function car))
+        010F:0000
+
+    note:
+        (addr) differs from the (address-of) function in standard XLISP.
+        Whereas (address-of) returns the address of a node, (addr) returns
+        the address of the data itself.  For instance, (addr string) is
+        equivalent to (peek (+ 4 (address-of string)) 4)
+            
+
+
+(peek <address> [size])     PEEK AT LOCATION IN MEMORY
+    <address>           far pointer to location in memory
+    [size]              optional argument:
+							<<< NOTE!  instead of cryptic numbers, symbols
+							<<< can be used instead: 'byte, 'word, 'long,
+							<<< 'float, 'ptr, 'string, etc.
+                            1   peek at byte (default)
+                            2   peek at word
+                            4   peek at long
+                            8   peek at floating-point number
+                            0   peek at ASCII string
+    returns             value of [size] at <address>
+        
+    examples:
+
+        > (define *integer-format* "%lu")     ; return to normal display
+        "%lu"
+        > (define x 666)
+        666
+        > (peek (addr x) 4)
+        666
+
+        > (define pi 3.1416)
+        3.1416
+        > (peek (addr pi) 8)
+        3.1416
+        > (define *integer-format* "%02X")
+        "%02X"
+        ; print out the 8 bytes that make up the
+        ; IEEE floating-point representation of PI:
+        > (progn        ; compound statement
+            (dotimes
+                (i 8)
+                (format stdout "~A " (peek (+ (addr pi) i))))
+            (format stdout "\n"))
+        A7 E8 48 2E FF 21 09 40 
+        > (define dosgetenv (getprocaddr doscalls "DOSGETENV"))
+        46D30000
+        > (define envseg 0)
+        0
+        > (define cmdline 0)
+        0
+        > (call dosgetenv (addr envseg) (addr cmdline))
+        T
+        > (peek (mk-fp envseg 0) 0)     ; peek at string
+        "COMSPEC=D:\\OS2\\SYS\\CMD.EXE"
+        > (peek (mk-fp envseg cmdline) 0)
+        "os2xlisp"
+            
+    note:
+        Protected mode prevents you from peeking at a non-readable segment,
+        and from reading past the end of a segment.  These protections are
+        enforced by OS2XLISP:
+            
+            > (peek 0 0)
+            error: No permission to read segment - 0
+            > (peek (+ 20000 (addr pi)) 8)
+            error: Past end of segment - 25F
+                
+        If you find the size arguments to (peek) difficult to remember,
+        you can write your own (peek), substituting more mneumonic
+        symbols:
+            
+            (define (my-peek addr size)
+                (peek addr
+                    (cond
+                        ((eq 'byte size) 1)
+                        ((eq 'word size) 2)
+                        ((eq 'lword size) 4)
+                        ((eq 'float size) 8)
+                        ((eq 'str size) 0))))
+                            
+        So that the following would work:
+            
+            (peek (mk-fp envseg 0) 'str)        ; peek at string
+            (peek (addr pi) 'float)             ; peek at float
+            
+            
+
+(poke <address> <value> [size])     POKE AT A LOCATION IN MEMORY
+    <address>           far pointer to location in memory
+    <value>             the value to poke into <address>
+    [size]              optional argument:
+                            1   poke at byte (default)
+                            2   poke at word
+                            4   poke at long
+                            8   poke at floating-point number
+                            0   poke at ASCII string (be careful!!)
+    returns             value
+        
+    example:
+        > (define x 666)
+        666
+        > (poke (addr x) 222 4)         ; change FIXNUM
+        222
+        > x
+        222
+            
+        > (poke (mk-fp envseg cmdline) "hello" 0)   ; change STRING
+        "hello"
+            
+    note:
+        Like (peek), the OS2XLISP version of (poke) enforces segment
+        access rules.  You cannot poke past the end of a segment, and you
+        can only poke into writeable segments:
+            
+            > (poke (func-addr (function car)) 666 4)  ; poke code segment
+            error: No permission to write seg - 271
+                
+        Being prevented from unintentionally treating code as data
+        is a great boon to software development.  However, sometimes
+        one wants to write intentionally self-modifying code.  You are NOT
+        prevented from doing this under OS/2:  the DosCreateCSAlias call
+        lets you modify a writeable data segment, and then treat it as an
+        executable code segment.  (Can (call) call such code?  Need to
+        test it...)
+            
+
+
+(mk-fp <segment> <offset>   MAKE A FAR POINTER
+    <segment>           handle to a memory segment/selector
+    <offset>            offset into the memory segment
+    returns             the far pointer
+        
+    example:
+        > (define *integer-format* "%lX")
+        "%lX"
+        > envseg
+        1FF
+        > cmdline
+        FA
+        > (mk-fp envseg cmdline)    ; munge seg and off into seg:off
+        1FF00FA
+        > (peek #x1ff00fa 0)        ; enter address directly
+        "hello"                     ; remember? we changed it! (see poke)
+        > (peek (mk-fp envseg cmdline) 0)   ; same thing
+        "hello"
+            
+    note:
+        (mk-fp seg off) is equivalent to (+ (shl seg 16) off).
+            
+        Protected-mode pointers are different from real-mode
+        pointers.  Protected-mode pointers do not point to physical 
+        locations in memory, but to virtual addresses.  There is no 
+        segment wraparound:  an address like 0271:FFFF bears no relation
+        to 0272:0000, for instance.  Plastering together the segment
+        and offset is just a convenience for high-level languages.
+
+
+
+(fp-seg <far pntr>)     EXTRACT SEGMENT PORTION OF A FAR POINTER
+    <far pntr>          a segment:offset pointer
+    returns             the segment/selector portion.
+        
+    example:
+        > (define envseg (fp-seg #x1ff00fa 0))
+        1FF
+        > (define _xllist (fp-seg (func-addr (function car))))
+        10F     ; segment for XLLIST.OBJ, which contains C function xcar()
+            
+    note:
+        (fp-seg fp) is equivalent to (shr fp 16).  Note that 
+        Microsoft's FP_SEG() macro (defined in the C #include file DOS.H)
+        does not operate properly with protected-mode pointers.
+            
+        A 286 protected-mode segment number is entirely different
+        from one in real-mode.  Segments are not a uniform 64K size; they
+        vary in size from 0 bytes to 64K.  Segments are possibly not
+        present in memory.  They may be moved around in memory.
+            
+            The segment number is actually composed of several fields:
+            
+            bit 0,1     requested protection level
+                2       table indicator (global/GDT=0 local/LDT=1)
+                3-15    index into table
+                    
+        For instance, segment number #x10F (271) represents a segment
+        with protection level 3, accessed from entry #33 in the local
+        descriptor table (LDT):
+            
+            > (ultoa #x10F 2)     ; display in base 2
+            "100001111"
+            > (define (seg-fields seg)
+                (format stdout
+                    "~A ~A\tLEVEL ~A\n"
+                    (if (zerop (logand seg 4)) 'GDT 'LDT)
+                    (shr seg 3)
+                    (logand seg 3)))
+            SEG-FIELDS
+            > (seg-fields 271)
+            LDT 33  LEVEL 3
+                
+        That only 13 bits of the 16-bit segment handle are available
+        for indexing into the descriptor table, means a program 
+        can access a maximum of 2^13 entries is each table -- hence the
+        famous 286 restriction of 8,192 segments.
+        
+        That the last two bits of a handle are devoted to the protection
+        level means that, for each entry in the two tables, there are four
+        synonymous handles:  one for each possible protection level.
+        
+        
+                
+(fp-off <far pntr>)     EXTRACT OFFSET PORTION OF A FAR POINTER
+    <far pntr>          a segment:offset pointer
+    returns             the offset portion
+        
+    example:
+        > (define beast 666)
+        666
+        > (define beast-ptr (addr beast))
+        025F4312
+        > (fp-seg beast-ptr)
+        25F
+        > (fp-off beast-ptr)
+        4312
+            
+    note:
+        (fp-off fp) is equivalent to (- fp (shl (shr fp 16) 16)).
+        
+
+
+SEGMENTATION FUNCTIONS
+
+(lsl <segment>)     SIZE (LIMIT) OF MEMORY SEGMENT
+    <segment>           a memory segment/selector
+    returns             highest legal offset in the segment (size-1)
+        
+    example:
+        > (define *integer-format* "%lu")         ; normal display
+        "%lu"
+        > (define seg1 (dos-alloc-seg #xffff))    ; get 65,535 bytes
+        623
+        > (define seg2 (dos-alloc-seg 5))         ; get 5 bytes
+        639
+        > (lsl seg1)
+        65534                   ; last legal offset within segment
+        > (lsl seg2)
+        4
+        
+    note:
+        (lsl) is equivalent to the 286 protected-mode instruction LSL,
+        and is roughly equivalent to GetHandleSize() in the Macintosh
+        toolbox, and to GlobalSize() in Windows programming.
+            
+        (lsl) is used internally by the (peek) and (poke) functions
+        to determine if addresses are within segment bounds.
+            
+        Note that (lsl) returns the last legal offset within a segment;
+        since offsets start at zero, this is one less than the size
+        of a segment.  
+            
+    bug/limitation:
+        The return value from (lsl) does not properly distinguish between
+        a segment whose size is 1 (LSL 0) and a non-existant segment
+        (also LSL 0).  Use the (lar) instruction to verify segment existance,
+        then use (lsl) to determine size.
+
+        
+        
+(lar <segment>)     ACCESS RIGHTS BYTE OF MEMORY SEGMENT
+    <segment>           a memory segment/selector
+    returns             286 access-rights byte:
+                            bit 0       accessed
+                                1       read/write
+                                2       conform/expand-down
+                                3       code=1, data=0
+                                4       (reserved for 386)
+                                5,6     protection level
+                                7       present
+                        or 0 if non-existant segment
+                                    
+    example:
+        ; is segment code?
+        > (define codep (x)
+            (=
+                8
+                (logand
+                    (lar x)
+                    8)))
+        CODEP
+        > (codep seg1)              ; seg1 from entry on (lsl)
+        NIL
+        > (codep (fp-seg (func-addr (function car))))
+        T
+            
+        ; is segment present in memory?
+        > (define presentp (x)
+            (=
+                128
+                (logand
+                    (lar x)
+                    128)))
+        PRESENTP
+        > (presentp (fp-seg (func-addr (function pprint))))
+        NIL                     ; segment not present in memory
+        > (pprint 'hello)       ; now use something from that segment
+        ;;;; a little disk activity
+        HELLO
+        NIL
+        > (presentp (fp-seg (func-addr (function pprint))))    ; (eval ++)
+        T                       ; segment is now present in memory
+            
+        ; list out segments present in memory, with ring 3 protection,
+        ; whose LSL is not zero
+        ; requested protection level
+        > (define (rpl x) (logand 3 x))
+        RPL
+        > (dotimes
+                (i #xffff)                       
+                (if                             ; for (i=0; i<0xFFFF; i++)
+                    (and                        ;   if (
+                        (presentp i)            ;       is_present(i) &&
+                        (= 3 (rpl i))           ;       rpl(i)==3 &&
+                        (not (zerop (lsl i))))  ;       lsl(i))
+                    (format stdout              ;       printf(
+                        "SEG ~A\tLSL ~A\n"      ;         "SEG %u\tLSL %u\n",
+                        i (lsl i))))            ;         i, lsl(i));
+        SEG 15  LSL 15
+        SEG 63  LSL 1226
+        SEG 79  LSL 6162
+        SEG 95  LSL 9394
+        SEG 99  LSL 69
+        SEG 103 LSL 3
+        SEG 111 LSL 15742
+        SEG 127 LSL 1278
+        .....
+            
+        ; display all global (GDT) segments visible to our program
+        > (dotimes
+            (i #xffff)
+            (if 
+                (and
+                    (zerop (logand i 4))        ; GDT selector
+                    (not (zerop (lar i))))      ; legal
+            ; then
+                (format stdout "SEG ~A\tSIZE ~A\tLAR ~A\n"
+                    i (lsl i) (lar i))))
+        SEG 96      SIZE 69     LAR 241     ; GDT info seg
+        ...
+        SEG 848     SIZE 481    LAR 241     ; ??
+        ...
+        SEG 5624    SIZE 95     LAR 251     ; ??
+        ...
+        SEG 17800   SIZE 0      LAR 228     ; DLL entry points
+        ...
+        SEG 17808   SIZE 0      LAR 228
+        ...
+                        
+    note:
+        (lar) is equivalent to the 286 protected-mode instruction LAR.
+
+        This instruction is useful, not only for determining the access
+        rights of a known segment, but for determining if some arbitrary
+        segment number corresponds to an actual segment.  Unlike
+        most 286 protected-mode instructions, LAR, LSL, VERR, and
+        VERW do NOT cause segment violations (GP fault) if called with
+        illegal segment numbers.  
+
+        You can experiment with OS/2 memory management by overcommiting
+        memory, then examining which code segments are present in memory,
+        and so on.  The file OVERCOM.LSP provides a beginning for testing
+        OS/2 memory overcommitment:  you can see as OS/2 "manufactures"
+        memory in order to satisfy an allocation request.  This could be
+        added to, using (lar) to test when segments change to being
+        not-present, for example.
+
+
+                                    
+(verr <segment>)        VERIFY SEGMENT FOR READING PERMISSION
+    <segment>           a memory segment/selector
+    returns             T if readable, NIL if no permission
+        
+    example:
+        > (verr (fp-seg (getprocaddr (loadmodule "DOSCALLS") 8)))
+        NIL                 ; not allowed to read OS/2 entry point
+        > (verr (fp-seg (func-addr (function pprint))))
+        T                   ; are allowed to read our own code segments
+            
+    note:
+        (verr) is equivalent to the 286 protected-mode instruction VERR.
+
+
+            
+            
+(verw <segment>)        VERIFY SEGMENT FOR WRITING PERMISSION
+    <segment>           a memory segment/selector
+    returns             T if writable, NIL if no permission
+        
+    example:
+        > (verw (fp-seg (func-addr (function pprint))))
+        NIL             ; not allowed to write into our own code segment
+        > (verw (fp-seg (address-of beast)))
+        T               ; are allowed to write into our own data allocations
+            
+    note:
+        (verw) is equivalent to the 286 protected-mode instuction VERW.
+        
+
+
+MISCELLANEOUS FUNCTIONS
+
+(word <number>)     CREATE AN XLISP NODE WITH 2-BYTE INTEGER
+    <number>            an XLISP 4-byte integer
+    returns             the same number, stored in 2 bytes
+
+    example:
+        > (call dosselectdisk (word 1))         ; try to select drive A:
+        T                                       ; T = success
+            
+    note:
+        This function was introduced because many OS/2 function calls
+        require a two-byte argument.  For numbers under 256, the 
+        corresponding two-byte number will be displayed as a character
+        code.  (word) is a kludge!
+
+
+
+(smsw)      MACHINE STATUS WORD
+    returns             286 machine status word:
+                            bit 0       protection enable
+                                1       math coprocessor present
+                                2       no coprocessor; use emulator
+                                3       task-switch indicator
+                                4-15    reserved for 386, etc.
+                                    
+    example:
+        > (define *integer-format* "%X")
+        "%X"
+        > (smsw)
+        FFED
+        ; is there a math coprocessor on board?
+        > (logand (smsw) 2)
+        0                               ; no, there isn't
+            
+          
+
+    [[[ documentation not finished ]]]
+
+(flags)     FLAGS REGISTER
+    returns             286 flags register:
+                            bit 0       carry flag
+                                2       parity flag
+                                4       auxiliary carry
+                                6       zero flag
+                                7       sign face
+                                8       trap (single-step) flag
+                                9       interrupt enable flag
+                                10      direction flag 
+                                11      overflow flag
+                                12,13   i/o privilege level
+                                14      nested task (iret control)
+                                    
+        
+(ds)        DATA SEGMENT
+    returns             the OS2XLISP data segment
+        
+(ss)        STACK SEGMENT
+    returns             the OS2XLISP stack segment
+    note:
+        Will differ for other threads, once multi-tasking implemented
+
+(sp)        CURRENT STACK POINTER
+    returns             the current stack pointer
+        
+(shl <op1> <op2>)       ARITHMETIC SHIFT LEFT
+    <op1>               the number 
+    <op2>               number of shifts
+    returns             <op1> shifted left <op2> times
+        
+(shr <op1> <op2>)       ARITHMETIC SHIFT RIGHT
+    <op1>               the number 
+    <op2>               number of shifts
+    returns             <op1> shifted right <op2> times
+        
+(atol <string>)         CONVERT ASCII STRING TO LONG
+    <string>            a string
+    returns             long number
+        
+(ultoa <number> <radix>)        NUMBER CONVERTED TO STRING IN RADIX
+    <number>            the number
+    <radix>             base
+    returns             ASCII string of number in base
+
+        
+STARTER FUNCTIONS
+
+    [[[ need to document the functions in INIT.LSP ]]]
+
+(dos-mem-avail)
+
+(dos-alloc-seg), (dos-free-seg)
+
+(date), (time)
+
+(getpid), (getppid)
+
+etc.
+
+
+
+APPENDIX A -- ANNOTATED BIBLIOGRAPHY
+
+    OS/2:
+
+    Gordon Letwin, "Inside OS/2" (Microsoft Press, 1988).  A lot of 
+Microsoft corporate propaganda on "The OS/2 Religion," "Microsoft's vision
+on the future," "Microsoft's plans for the coming second industrial
+revolution" (?!), and so on, but actually an excellent book.  Should be
+read in conjunction with any standard textbook on operating systems, such
+as Deitel's "An Introduction to Operating Systems."
+
+    Ed Iacobucci, "OS/2 Programmer's Guide" (McGraw-Hill, 1988).  The
+one OS/2 book to have, when you're having only one.  Very complete
+reference with a few unfortunate typographical errors (e.g., layout of
+the LDT info seg on p.610 has wrong offsets; reference page for
+DosDevIOCtl on p.721 refers to a non-existent Appendix C; but hey!, at
+$24.95, it sure beats what Microsoft is charging for development kits).
+Definitely order the disk -- it not only has all the ASM code from the
+back of the book, but you can get it in C as well.  I particularly
+recommend his SNAKE.C for learning about multi-threaded applications.
+
+    David Cortesi, "The Programmer's Essential OS/2 Handbook," M&T Books,
+1988.  Cortesi has obviously done a lot of digging in OS/2, and has come
+up with a lot of information not found in Microsoft's documentation.  The
+discussion of run-time dynamic linking (pp.132-137) unfortunately contains
+a number of errors.  As with Iacobucci's book/disk, the Cortesi disk
+contains a tremendous amount of code not found in the book -- his Pascal
+code seems to be in a little better shape than his C, but all in all it's
+a pretty remarkable job.  His reference section (which comes after the
+index) is the best place to look up OS/2 error codes.
+
+    Jeffrey Krantz, Ann Mizell, Robert Williams, "OS/2 Features,
+Functions, and Applications" (Wiley, 1988).  Their code is pretty bad,
+but has a good section on CONFIG.SYS settings, and a lengthy section
+on run-time dynamic linking.
+
+    Charles Petzold, "Programming Windows" (Microsoft Press, 1988).  Why
+mention a Windows book when listing OS/2 resources?  Because Windows was
+very much Microsoft's guinea pig for OS/2 -- or, Windows programmers were
+the guinea pigs and Windows was the laboratory.  Anyway, much of Petzold's
+book is a good introduction to OS/2 land and, in any case, it's good
+preparation for Presentation Manager.  
+
+    Charles Petzold, "Environments" column, PC Magazine,
+29 September 1987-.  Essential.
+
+    David Cortesi, "Dynamic Linking in OS/2," Dr. Dobb's, December 1987.
+Also see the responses in Dr. Dobb's, April 1988, p.14.     
+        
+    Microsoft Systems Journal, May 1987.
+        
+    PC Tech Journal, November 1987.
+        
+    Three "un-resources" (books to avoid because they provide nothing that
+isn't already in the Microsoft documentation) are:  Judd Robbins, "Inside
+OS/2" (Sybex); Kris Jamsa, "Using OS/2" (McGraw-Hill); and John Campbell,
+"Inside OS/2" (Tab).  
+        
+    Protected mode:
+
+    Ed Strauss, "Inside the 80286" (Brady, 1986).  Excellent book on
+the 286; necessary even if you have a 386, because OS/2 is definitely
+a 286 operating system right now (grrrr).
+
+    John Crawford, Patrick Gelsinger, "Programming the 80386"
+(Sybex, 1987).  This is THE 386 book, with wonderful pseudocode in C
+for every instruction.
+
+
+    Lisp:
+        
+    Guy L. Steele, Jr., "Common LISP: The Language" (Digital Press,
+1987).  The complete guide to the language.  If you know Harbison & Steele's
+"C: A Reference Manual," this is same kind of thorough reference.  
+
+    Deborah Tatar, "A Programmer's Guide to Common LISP" (Digital
+Press, 1987).  Based on Steele.
+
+    David S. Touretzky, "LISP:  A Gentle Introduction to Symbolic
+Computation" (Harper & Row, 1984).  A gentle introduction to symbolic
+computation.
+
+    Robert Wilensky, "Common LISPcraft" (Norton, 1986).  
+
+    Harold Abelson, Gerald Jay Sussman, Julie Sussman, "Structure
+and Interpretation of Computer Programs" (MIT Press, 1986).  While
+Abelson and Sussman describe the Scheme dialect of LISP, this may be
+the best book on computer programming ever written.  Two other
+books employing the Scheme dialect may also be useful to you:
+Daniel P. Friedman and Matthias Felleisen, "The Little LISPer"
+(MIT Press, 1987); and Michael Eisenberg, "Programming in Scheme"
+(Scientific Press, 1988).  Note that David Betz has a version of
+XScheme 0.7 running under OS/2.
+
+

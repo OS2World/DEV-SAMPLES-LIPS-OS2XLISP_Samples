@@ -1,0 +1,105 @@
+ 1 ; (dir) An OS2XLISP file-listing function.
+ 2 ; Andrew Schulman 4-April-1988
+  
+ 3 ; usage: (dir [match-str|ext-sym] [print-flag])
+ 4 ; defaults: match-str is "*.*", print-flag is t
+ 5 ; examples:
+ 6 ;     os2xlisp            os/2 equivalent
+ 7 ;  -----------------      -------------------
+ 8 ;  (dir)            	  c:>dir *.*
+ 9 ;  (dir "*.lsp") 		  c:>dir *.lsp
+10 ;  (dir 'lsp)    		  c:>dir *.lsp
+11 ;  (dir "*.lsp" nil) 	  none (returns directory info in a list)
+ 
+12 ; get handles for OS/2 system calls
+
+13 (define doscalls (loadmodule "DOSCALLS"))
+14 (define DOSFINDFIRST (getprocaddr doscalls "DOSFINDFIRST"))
+15 (define DOSFINDNEXT (getprocaddr doscalls "DOSFINDNEXT"))
+16 (define DOSFINDCLOSE (getprocaddr doscalls "DOSFINDCLOSE"))
+
+17 ; get handle for C runtime-library call
+
+18 (define crtlib (loadmodule "CRTLIB"))
+19 (define printf (getprocaddr crtlib "_printf"))
+
+20 ; package printf for convenient use
+
+21 (defmacro printf (mask &rest args)
+22    `(c-call printf ,mask ,@args))
+
+23 ; OS/2 file-search structure
+
+24 ;struct FileFindBuf {
+25 ;        unsigned create_date;
+26 ;        unsigned create_time;
+27 ;        unsigned access_date;
+28 ;        unsigned access_time;
+29 ;        unsigned write_date;
+30 ;        unsigned write_time;
+31 ;        unsigned long file_size;
+32 ;        unsigned long falloc_size;
+33 ;        unsigned attributes;
+34 ;        unsigned char string_len;
+35 ;        char file_name[13];
+36 ;        };
+
+37 ; equivalent OS2XLISP structure
+
+38 (define FileFindBuf
+39    '((word create_date)
+40	  (word create_time)
+41	  (word access_date)
+42	  (word access_time)
+43    (word write_date)
+44    (word write_time)
+45    (long file_size)
+46    (long falloc_size)
+47    (word attributes)
+48    (byte string_len)
+49    ((char 13) file_name)))
+
+50 ; routine to print selected elements of the returned list
+          
+51 (define (print-dir filelist) 
+52   (dotimes (i (length filelist))
+53   		(printf "%-20s %8lu\n" 
+54			(cadr (assoc 'file_name (nth i filelist)))
+55			(cadr (assoc 'file_size (nth i filelist))))))
+
+56 ; directory routine
+        
+57 (define (dir &optional filespec (print-flag t))
+
+58    (if (null filespec)					 ; establish the filespec
+59        (setf filespec "*.*"))
+60    (if (not (equal 'STRING (type-of filespec)))
+61        (setf filespec (format nil "*.~A" (symbol-name filespec))))
+
+62    (let*
+63         ((filelist nil)				 ; intialize list
+64         (hdir (word -1))				 ; default directory handle 
+65		 (attr (word 6))				 ; find normal, hidden, system files
+66       (buf (make-struct FileFindBuf)) ; make instance of structure
+67       (buflen (word (length buf)))	 ; OS/2 needs structure's length
+68       (find-count (word 1)))		     ; find one file at a time
+ 
+69   (if (zerop (call DOSFINDFIRST	; get info for first matching file
+70      ^filespec                          
+71      ^hdir                            
+72      attr 	                          
+73      buf                               
+74      buflen                            
+75      ^find-count                     
+76      0))
+77  ; then put info into list, find/add info for remaining files
+78      (progn
+79          (setf filelist (list (unpack-struct FileFindBuf buf)))
+80          (while (zerop (call DOSFINDNEXT hdir buf buflen ^find-count))
+81              (nconc filelist
+82                  (list (unpack-struct FileFindBuf buf))))))
+
+83  (call DOSFINDCLOSE hdir)
+
+84  (if print-flag (print-dir filelist) filelist))) ; print or return the list
+

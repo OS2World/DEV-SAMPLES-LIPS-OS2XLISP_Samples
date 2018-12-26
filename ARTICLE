@@ -1,0 +1,285 @@
+807037
+
+Exploring OS/2 with a LISP Interpreter
+
+by Andrew Schulman
+
+Extensions to XLISP provide a convenient way to experiment with OS/2
+
+Programmers who want to master OS/2's many functions have to write lots of small programs that exercise those functions.  These folks may find, as I did, that the C compiler and the linker packaged with the OS/2 Software Development Kit (SDK) don't support the kind of interaction with OS/2 that helps novices ascend the long learning curve. Ideally you'd want something like a pocket calculator with keys labelled !MONO!DOSSLEEP!ENDMONO!, !MONO!VIOPOPUP!ENDMONO!, !MONO!KBDSTRINGIN!ENDMONO!, and so on; you'd compose expressions using these keys and instantly see the results. 
+  A LISP interpreter works like that, so I've extended XLISP (David Betz's public-domain implementation of LISP; see ``An XLISP Tutorial'', BYTE, March 1985, page 221) to create OS2XLISP, a version of XLISP that runs under OS/2. OS2XLISP is an educational tool that you can use to try out individual OS/2 functions and interactively develop small OS/2 programs. 
+  As its name implies, OS2XLISP requires an OS/2-capable machine and OS/2. Since OS2XLISP is not a bound executable--a .EXE, created by the BIND utility, that can run in both protected and real modes--it won't run in the DOS compatibility box.
+
+!SUBHED!Hello OS/2 World!ENDSUBHED!
+At the core of all LISPs you'll find a read-eval-print loop. The interpreter reads each expression that you type, evaluates it, and prints the value of the expression. Since the first program that you write in any language is the one that prints the phrase "Hello world", let's do that program in OS2XLISP. (Note that we'll use monospace type for the expressions that we type in, and normal type for OS2XLISP's responses.) 
+
+The first version is trivially easy:
+
+!MONO!
+>"Hello world"
+!ENDMONO!
+
+"Hello world"
+
+The expression "Hello world" is a string.  The OS2XLISP evaluator applies the rule that strings (like characters and numbers) evaluate to themselves and simply returns the string.
+  Now let's use OS2XLISP with an OS/2 function to print the string "Hello world."  We start with !MONO!loadmodule!ENDMONO!, an OS2XLISP function that returns a handle for a named dynlink (dynamic-link) library.
+
+!MONO!
+>(define viocalls (loadmodule "viocalls"))
+!ENDMONO!
+
+1360
+
+When you type parenthesized expressions like this one, LISP treats the first object after each left parenthesis as a function call and the rest of the objects as arguments to the function. Every expression returns a value that an enclosing expression can use; LISP evaluates complex expressions from the inside out. Here !MONO!loadmodule!ENDMONO! returns the library handle 1360 to the enclosing !MONO!define!ENDMONO! expression. The !MONO!define!ENDMONO! expression creates the variable !MONO!viocalls!ENDMONO!, assigns the handle to it, and returns the handle as the value of the whole expression. OS2XLISP then prints the value.
+  Using the handle, we can retrieve the address of an OS/2 function.
+
+!MONO!
+>(define vio-wrt-tty 
+  (getprocaddr viocalls "VIOWRTTTY"))
+!ENDMONO!
+
+15142831
+
+The OS2XLISP function !MONO!getprocaddr!ENDMONO! takes a dynlink handle and the name of a function, and returns the function's address. Now we can use !MONO!call!ENDMONO!, OS2XLISP's gateway to OS/2, to invoke the function.  According to the OS/2 !ITAL!Programmer's Reference!ENDITAL! the function requires a string, a word specifying the length of the string, and a video handle (a word that is, for now, reserved as zero). 
+
+!MONO!
+>(define hello "Hello world\r\n")
+!ENDMONO!
+
+"Hello world"
+
+!MONO!
+>(call vio-wrt-tty hello
+  (word (length hello)) (word 0))
+!ENDMONO!
+
+Hello world
+0 
+
+When given a string argument, !MONO!length!ENDMONO! returns the number of characters in the string.  OS2XLISP prefers 4-byte longs but !MONO!vio-wrt-tty!ENDMONO! requires 2-byte words, so we use the OS2XLISP function !MONO!word!ENDMONO! to cast the arguments to the appropriate size.
+  The outputs shown come from two different sources. The text comes from OS/2; from LISP's perspective it's merely a side effect of the evaluation of the expression. LISP itself printed the zero--OS/2's return code indicating success.
+  We can now refine this example by hiding the details inside a LISP function. Let's define a function !MONO!print-str!ENDMONO! that prints any string supplied as its argument:
+
+!MONO!
+>(define (print-str str)
+    (call vio-wrt-tty str
+        (word (length str)) (word 0)))
+!ENDMONO!
+
+PRINT-STR
+
+!MONO!
+>(print-str "Hello world\r\n")
+!ENDMONO!
+
+Hello world
+0
+
+Of course we've gone to a lot of trouble to echo a string--something OS2XLISP does quite simply--but it illustrates the method you use to call any OS/2 function.
+
+!SUBHED!A Directory Program!ENDSUBHED!
+In addition to the command-line-oriented interactions we've seen so far, OS2XLISP supports a file-oriented mode. You can use a text editor to create a file containing definitions of variables and functions. When you start OS2XLISP from the operating system's command line you can supply the name of such a file; OS2XLISP reads and evaluates the definitions. Or you can load definitions from within the interpreter by means of the !MONO!load!ENDMONO! function.
+  When you want to explore OS/2 functions that require complicated lists of arguments, and to combine those functions algorithmically, you'll prefer text files to typing in definitions at the OS2XLISP prompt. Listing 1 presents one such file, DIR.LSP, which defines the file-listing function !MONO!dir!ENDMONO!.
+  The !MONO!define!ENDMONO! expressions create dynlink handles and, using those handles, addresses for the functions that !MONO!dir!ENDMONO! will need. The functions come from two different dynlink libraries: OS/2's own DOSCALLS.DLL, and the C runtime library provided with Microsoft C 5.1 (CRTLIB.DLL). Though I've been emphasizing that OS2XLISP can call OS/2 functions, you can use it to call any function exported by a (commercial or homegrown) dynlink library. There's a nice synergy here between LISP's ability to load functions at runtime and OS/2's dynamic linking facility.
+  The !MONO!defmacro!ENDMONO! expression encapsulates the function !MONO!printf!ENDMONO!, exported from the C runtime library, as an OS2XLISP function. From the LISP perspective, we're binding to the symbol !MONO!printf!ENDMONO!'s function-slot (as distinct from its value-slot, which retains the address of !MONO!_printf!ENDMONO! in CRTLIB.DLL) a function that takes one required argument (the mask, or format string) and a list of subsequent arguments. The body of the function uses the OS2XLISP primitive !MONO!c-call!ENDMONO! to invoke the compiled function, passing the mask and argument list. (The !MONO!,@!ENDMONO! directive splices together the mask and arguments to create a single list.)  From the OS/2 perspective, note that we're using !MONO!c-call!ENDMONO! rather than !MONO!call!ENDMONO!. That's necessary to distinguish between the C calling convention used by the C runtime library and the Pascal calling convention used by OS/2.
+  The !MONO!struct FileFindBuf!MONO! expression shown in comments (LISP comments begin with a semicolon) illustrates the C definition of the structure used by the functions !MONO!DOSFINDFIRST!ENDMONO! and !MONO!DOSFINDNEXT!ENDMONO!. The next !MONO!define!ENDMONO! expression creates a similar definition in OS2XLISP. In a C program you'd declare an instance of the structure like this:
+
+!MONO!
+struct FileFindBuf dirEntry;
+!ENDMONO!
+
+After a call to !MONO!DOSFINDFIRST!ENDMONO! or !MONO!DOSFINDNEXT!ENDMONO!, you'd retrieve values with expressions like !MONO!dirEntry.file_name!ENDMONO!.
+  In the OS2XLISP !MONO!dir!ENDMONO! function we use !MONO!make-struct!ENDMONO!, a function that analyzes the definition of a structure and creates an object of the appropriate size. On the output end we use !MONO!unpack-struct!ENDMONO! to convert the structure into a LISP association list (a collection of name-value pairs) and !MONO!assoc!ENDMONO! to convert names to corresponding values. The file STRUCT.LSP, distributed with OS2XLISP, defines the functions !MONO!make-struct!ENDMONO! and !MONO!unpack-struct!ENDMONO!.
+  The calls to !MONO!DOSFINDFIRST!ENDMONO! and !MONO!DOSFINDNEXT!ENDMONO! use the !MONO!^!ENDMONO! macro to take the address of objects, in those cases where OS/2 requires an address. In the case of the strings !MONO!filespec!ENDMONO! and !MONO!buf!ENDMONO! (!MONO!make-struct!ENDMONO! stores the structure it creates in a string) the address macro isn't strictly necessary, since !MONO!call!ENDMONO! converts strings to their addresses, but it helps document the kind of arguments OS/2 expects.
+  The LISP function !MONO!progn!ENDMONO! groups expressions for serial evaluation. The list !MONO!filelist!ENDMONO!, set to the value returned by !MONO!DOSFINDFIRST!ENDMONO! (unpacked by !MONO!unpack-struct!ENDMONO!), grows by destructive concatenation as !MONO!nconc!ENDMONO! appends to it the results of each call to !MONO!DOSFINDNEXT!ENDMONO!. When !MONO!zerop!ENDMONO! (is-it-zero?) returns false, !MONO!DOSFINDNEXT!ENDMONO! has failed; !MONO!DOSFINDCLOSE!ENDMONO! closes the search handle. If !MONO!print-flag!ENDMONO! is true (as it is by default), !MONO!print-dir!ENDMONO! uses !MONO!dotimes!ENDMONO! to iterate over the list, !MONO!assoc!ENDMONO! to retrieve values from sublists, and !MONO!printf!ENDMONO! to display them.  Voila!  OS2XLISP prints a list of files in the current directory.  Of course OS/2's !MONO!dir!ENDMONO! command does the same job much more quickly, but again, our objective is to learn about internal OS/2 functions.
+
+!SUBHED!Allocating Huge Memory!ENDSUBHED!
+One of OS/2's more intriguing functions is !MONO!DOSALLOCHUGE!ENDMONO!, which allocates a sequence of 64K-byte segments and returns a pointer to the first segment's selector. Let's allocate a megabyte of memory.
+
+!MONO!
+>(define first 0)
+!ENDMONO!
+
+0
+
+!MONO!
+>(call
+   (getprocaddr doscalls "DOSALLOCHUGE")
+   (word 16) (word 0) ^first (word 0) (word 0))
+!ENDMONO!
+
+; the disk light flashes now
+
+0
+
+!MONO!
+>first
+!ENDMONO!
+
+863
+
+Ignoring the other parameters to !MONO!DOSALLOCHUGE!ENDMONO!, we asked OS/2 to allocate 16 64K-byte segments and place the number of the first segment in the variable !MONO!first!ENDMONO!. The zero return indicates that !MONO!DOSALLOCHUGE!ENDMONO! succeeded, the disk activity indicates that OS/2 did some swapping to satisfy our request, and !MONO!first!ENDMONO! now has the value 863.
+  We can use OS2XLISP's !MONO!lsl!ENDMONO! function to verify that !MONO!first!ENDMONO! refers to a 64K-byte segment. This function corresponds to the 80286 protected-mode instruction !MONO!LSL!ENDMONO!; it returns the last legal offset within a memory segment:
+
+!MONO!
+>(lsl first)
+!ENDMONO!
+
+65535
+
+So, !MONO!first!ENDMONO! contains a selector for a 64K-byte segment. What about the other 15 segments that make up our one-megabyte huge object?  The difference between one segment selector and the next is 1, shifted left by the value that !MONO!DOSGETHUGESHIFT!ENDMONO! returns.
+
+!MONO!
+>(define shift 0)
+!ENDMONO!
+
+0
+
+!MONO!
+>(call (getprocaddr doscalls "DOSGETHUGESHIFT") ^shift)
+!ENDMONO!
+
+0
+
+!MONO!
+>shift
+!ENDMONO!
+
+4
+
+!MONO!
+>(shl 1 shift)
+!ENDMONO!
+
+16
+
+Thus, the next segment in the huge object is:
+
+!MONO!
+>(+ first 16)
+!ENDMONO!
+
+879
+
+!MONO!
+>(lsl 879)
+!ENDMONO!
+
+65535
+
+and so on, for all the segments that make up the huge object. 
+  All this can be packaged into a function that allocates a huge object and returns a list of its segment selectors (see Listing 2). The first (and only required) argument to !MONO!alloc-huge!ENDMONO! is the number of segments to allocate.  We can easily allocate 512K bytes.
+
+!MONO!
+>(define big (alloc-huge 8))
+!ENDMONO!
+
+(863 879 895 911 927 943 959 975)
+
+OS2XLISP returns a list of 8 segment selectors.  But 64000K bytes is too much to ask for.
+
+!MONO!
+>(define impossible (alloc-huge 1000)) 
+!ENDMONO!
+
+NIL
+
+The NIL return signals OS/2's failure to satisfy the request.
+
+One of the optional arguments permits you to allocate a huge object whose final segment isn't a full 64K.  We can for example allocate a huge object made up of four 64K-byte segments and a fifth 1K-byte segment.
+
+!MONO!
+>(define 1k-bigger (alloc-huge 4 1024))
+!ENDMONO!
+
+(1927 1943 1959 1975 1991) 
+
+!MONO!
+>(lsl 1991)
+!ENDMONO!
+
+1023
+
+The last segment, as !MONO!lsl!ENDMONO! shows, is indeed a 1K-byte segment.
+
+  It's easy to traverse the entire huge object in one operation. In the directory example, we used !MONO!dotimes!ENDMONO! and !MONO!nth!ENDMONO! to iterate over a list. Here we'll use !MONO!lambda!ENDMONO! to create a temporary function that pokes a string into a segment and !MONO!mapcar!ENDMONO! to apply that function to each element of the list !MONO!1k-bigger!ENDMONO!.
+
+!MONO!
+>(mapcar
+    (lambda (seg)  
+      (poke  
+         (mk-fp seg 0) 
+         (format nil "~A" seg)
+         'str)) 
+    1k-bigger)
+!ENDMONO!
+
+The !MONO!mk-fp!ENDMONO! function manufactures a far pointer from a segment and an offset; !MONO!format!ENDMONO! (a LISP !MONO!printf!ENDMONO! analog) builds a string containing the segment selector; !MONO!'str!ENDMONO! specifies that the object being poked is a string; !MONO!poke!ENDMONO! puts the string into the segment. 
+
+To verify that we have really poked data into the object:
+
+!MONO!
+>(mapcar
+    (lambda (seg)
+       (peek
+           (mk-fp seg 0)
+            'str))
+    1k-bigger)
+!ENDMONO!
+
+("1927" "1943" "1959" "1975" "1991")
+
+Finally, we need a function to release a huge object. We'll let the function work on the entire list, or just the first segment.
+
+!MONO!
+>(define (free-huge seg)
+    (zerop (call
+       (getprocaddr doscalls "DOSFREESEG")
+          (word (if (listp seg) (car seg) seg)))))
+!ENDMONO!
+
+FREE-HUGE
+
+After you free a segment, its size becomes zero. If you then try to read or write into the segment, you'll see what's meant by ``protected mode.''
+
+!MONO!
+>big
+!ENDMONO!
+
+(863 879 895 911 927 943 959 975)
+
+!MONO!
+>(lsl 863)
+!ENDMONO!
+
+65535
+
+!MONO!
+>(free-huge big)
+!ENDMONO!
+T
+
+!MONO!
+>(lsl 863)
+!ENDMONO!
+
+0
+
+!MONO!
+>(poke (mk-fp 863 0) "Hello, big?")
+!ENDMONO!
+
+break: Segmentation Violation
+
+The segmentation violation doesn't trigger a return to OS/2, by the way, as it would in most OS/2 applications. OS2XLISP retains control and you can proceed.
+
+!SUBHED!An OS/2 Laboratory!ENDSUBHED!
+If you're running OS/2 but don't have Microsoft's Software Development Kit, OS2XLISP can give you a preview of what it's like to program under OS/2. If you already own the SDK, you may nevertheless find OS2XLISP a convenient alternative to compiling and linking C programs. LISP's interactive style makes it easy to try out OS/2 functions singly or in combination. The OS/2 dynlink facility merges nicely with LISP; you can write LISP functions that make calls to OS/2 functions, to functions in the C runtime library, or to functions in any .DLL file that you create under OS/2. 
+
+[Editor's note: Source code and documentation for OS2XLISP are available in a variety of formats. See page 3 for details.]
+
+Listing 1: The OS2XLISP !MONO!dir!ENDMONO! function.
+
+Listing 2: Using OS2XLISP to allocate huge memory.
+
+
